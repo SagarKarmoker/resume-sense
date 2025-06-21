@@ -6,12 +6,18 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "db:generate": "prisma generate",
+    "db:push": "prisma db push",
+    "db:migrate": "prisma migrate dev",
+    "db:studio": "prisma studio",
+    "db:reset": "prisma migrate reset"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.832.0",
     "@aws-sdk/s3-request-presigner": "^3.832.0",
     "@clerk/nextjs": "^6.22.0",
+    "@prisma/client": "^6.10.1",
     "axios": "^1.10.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
@@ -19,8 +25,10 @@
     "nanoid": "^5.1.5",
     "next": "15.3.4",
     "next-auth": "^5.0.0-beta.28",
+    "prisma": "^6.10.1",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
+    "svix": "^1.67.0",
     "tailwind-merge": "^3.3.1"
   },
   "devDependencies": {
