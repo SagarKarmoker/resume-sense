@@ -41,7 +41,9 @@ export default function Dashboard() {
 
             try {
                 const uploadUrl = await axios.post('/api/upload', {
-                    fileType: file.type
+                    fileName: file.name,
+                    fileType: file.type,
+                    fileSize: file.size
                 })
 
                 const upload = await axios.put(uploadUrl.data.uploadUrl, file, {

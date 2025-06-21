@@ -14,12 +14,12 @@ export default function Auth() {
                 <SignedOut>
                     <div className="space-y-4">
                         <SignInButton>
-                            <button className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-4 rounded-lg transition duration-200 ease-in-out transform hover:scale-105">
+                            <button className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-4 rounded-lg transition duration-200 ease-in-out transform hover:scale-105 hover:cursor-pointer">
                                 Sign In
                             </button>
                         </SignInButton>
                         <SignUpButton>
-                            <button className="w-full bg-white hover:bg-gray-50 text-blue-600 font-semibold py-3 px-4 rounded-lg border-2 border-blue-600 transition duration-200 ease-in-out transform hover:scale-105">
+                            <button className="w-full bg-white hover:bg-gray-50 text-blue-600 font-semibold py-3 px-4 rounded-lg border-2 border-blue-600 transition duration-200 ease-in-out transform hover:scale-105 hover:cursor-pointer">
                                 Sign Up
                             </button>
                         </SignUpButton>
