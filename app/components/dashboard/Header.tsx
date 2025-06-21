@@ -1,8 +1,13 @@
-import { FileText, Settings } from "lucide-react";
+import { FileText, Settings, RefreshCw } from "lucide-react";
 import { UserButton } from '@clerk/nextjs';
 import Link from 'next/link';
 
-export default function Header() {
+interface HeaderProps {
+  onRefresh?: () => void;
+  isRefreshing?: boolean;
+}
+
+export default function Header({ onRefresh, isRefreshing = false }: HeaderProps) {
   return (
     <header className="bg-white shadow-sm border-b border-slate-200">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -16,6 +21,16 @@ export default function Header() {
             </Link>
           </div>
           <div className="flex items-center space-x-4">
+            {onRefresh && (
+              <button 
+                onClick={onRefresh}
+                disabled={isRefreshing}
+                className="p-2 text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                title="Refresh data"
+              >
+                <RefreshCw className={`w-5 h-5 ${isRefreshing ? 'animate-spin' : ''}`} />
+              </button>
+            )}
             <button className="p-2 text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer">
               <Settings className="w-5 h-5" />
             </button>

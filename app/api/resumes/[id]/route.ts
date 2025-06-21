@@ -8,7 +8,7 @@ export async function GET(
 ) {
   try {
     const user = await getCurrentUserOrThrow();
-    const resumeId = params.id;
+    const { id: resumeId } = await params;
 
     const resume = await prisma.resume.findFirst({
       where: {

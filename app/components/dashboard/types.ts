@@ -10,6 +10,9 @@ export interface ResumeAnalysis {
   suggestions: string[];
   jobMatches: string[];
   status: 'completed' | 'processing' | 'failed';
+  fileKey?: string;
+  fileType?: string;
+  isFallback?: boolean;
 }
 
 export interface TabItem {

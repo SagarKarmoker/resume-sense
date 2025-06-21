@@ -6,9 +6,17 @@ import Link from "next/link";
 
 interface OverviewTabProps {
   analyses: ResumeAnalysis[];
+  stats?: {
+    totalResumes: number;
+    completedAnalyses: number;
+    processingAnalyses: number;
+    failedAnalyses: number;
+    totalJobMatches: number;
+    averageScore: number;
+  };
 }
 
-export default function OverviewTab({ analyses }: OverviewTabProps) {
+export default function OverviewTab({ analyses, stats }: OverviewTabProps) {
   // Handle case when analyses is undefined or empty
   if (!analyses || analyses.length === 0) {
     return (
@@ -49,9 +57,10 @@ export default function OverviewTab({ analyses }: OverviewTabProps) {
     );
   }
 
-  const totalAnalyses = analyses.length;
-  const avgResumeScore = Math.round(analyses.reduce((acc, analysis) => acc + analysis.resumeScore, 0) / analyses.length);
-  const totalJobMatches = analyses.reduce((acc, analysis) => acc + analysis.jobMatches.length, 0);
+  // Use stats if provided, otherwise calculate from analyses
+  const totalAnalyses = stats?.totalResumes || analyses.length;
+  const avgResumeScore = stats?.averageScore || Math.round(analyses.reduce((acc, analysis) => acc + analysis.resumeScore, 0) / analyses.length);
+  const totalJobMatches = stats?.totalJobMatches || analyses.reduce((acc, analysis) => acc + analysis.jobMatches.length, 0);
   const totalSuggestions = analyses.reduce((acc, analysis) => acc + analysis.suggestions.length, 0);
 
   return (
@@ -63,24 +72,28 @@ export default function OverviewTab({ analyses }: OverviewTabProps) {
           value={totalAnalyses}
           icon={FileText}
           iconBgColor="bg-gradient-to-r from-blue-600 to-purple-600"
+          delay={0}
         />
         <StatsCard
           title="Avg Resume Score"
           value={avgResumeScore}
           icon={TrendingUp}
           iconBgColor="bg-gradient-to-r from-green-600 to-emerald-600"
+          delay={100}
         />
         <StatsCard
           title="Job Matches"
           value={totalJobMatches}
           icon={Target}
           iconBgColor="bg-gradient-to-r from-purple-600 to-pink-600"
+          delay={200}
         />
         <StatsCard
           title="Suggestions"
           value={totalSuggestions}
           icon={MessageSquare}
           iconBgColor="bg-gradient-to-r from-orange-600 to-red-600"
+          delay={300}
         />
       </div>
 

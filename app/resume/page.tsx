@@ -17,7 +17,9 @@ import {
   Calendar,
   Zap,
   Eye,
-  EyeOff
+  EyeOff,
+  Play,
+  Loader2
 } from 'lucide-react';
 import Link from 'next/link';
 import axios from 'axios';
@@ -30,6 +32,12 @@ interface AnalysisResult {
   keywordsMatched: string[];
   keywordsMissing: string[];
   atsCompatibility: string;
+  aiProvider?: string;
+  metadata?: {
+    isFallback?: boolean;
+    message?: string;
+    aiProvider?: string;
+  };
 }
 
 interface ResumeData {
@@ -39,6 +47,7 @@ interface ResumeData {
   fileType: string;
   status: string;
   createdAt: string;
+  fileKey: string;
   analyses: AnalysisResult[];
 }
 
@@ -49,6 +58,7 @@ export default function ResumeAnalysisReport() {
   const [resume, setResume] = useState<ResumeData | null>(null);
   const [analysis, setAnalysis] = useState<AnalysisResult | null>(null);
   const [loading, setLoading] = useState(true);
+  const [analyzing, setAnalyzing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showKeywords, setShowKeywords] = useState(true);
   const [showSuggestions, setShowSuggestions] = useState(true);
@@ -62,17 +72,55 @@ export default function ResumeAnalysisReport() {
   const fetchResumeData = async () => {
     try {
       setLoading(true);
+      setError(null);
+      
       const response = await axios.get(`/api/resumes/${resumeId}`);
       setResume(response.data);
       
       if (response.data.analyses && response.data.analyses.length > 0) {
-        setAnalysis(response.data.analyses[0]);
+        const analysisData = response.data.analyses[0];
+        console.log('Analysis data:', analysisData);
+        console.log('Analysis metadata:', analysisData.metadata);
+        console.log('Is fallback:', analysisData.metadata?.isFallback);
+        setAnalysis(analysisData);
       }
     } catch (err) {
       console.error('Error fetching resume data:', err);
       setError('Failed to load resume analysis');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleRunAnalysis = async () => {
+    if (!resume) return;
+    
+    try {
+      setAnalyzing(true);
+      setError(null);
+      
+      // Update local state to show processing
+      setResume(prev => prev ? { ...prev, status: 'PROCESSING' } : null);
+      
+      const response = await axios.post('/api/analyze', {
+        resumeId: resume.id,
+        fileKey: resume.fileKey,
+        fileType: resume.fileType
+      });
+
+      if (response.data.success) {
+        // Refresh data to show new analysis
+        await fetchResumeData();
+      } else {
+        throw new Error('Analysis failed');
+      }
+    } catch (err) {
+      console.error('Analysis failed:', err);
+      setError('Failed to analyze resume. Please try again.');
+      // Reset status on error
+      setResume(prev => prev ? { ...prev, status: 'FAILED' } : null);
+    } finally {
+      setAnalyzing(false);
     }
   };
 
@@ -89,6 +137,8 @@ export default function ResumeAnalysisReport() {
   };
 
   const getATSColor = (compatibility: string) => {
+    if (!compatibility) return 'text-gray-600 bg-gray-100';
+    
     switch (compatibility.toLowerCase()) {
       case 'good': return 'text-green-600 bg-green-100';
       case 'average': return 'text-yellow-600 bg-yellow-100';
@@ -119,8 +169,12 @@ export default function ResumeAnalysisReport() {
     return (
       <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-          <p className="text-gray-600">Loading analysis report...</p>
+          <div className="relative">
+            <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-blue-600 mx-auto mb-4"></div>
+            <div className="absolute inset-0 rounded-full border-2 border-blue-200 animate-pulse"></div>
+          </div>
+          <h2 className="text-xl font-semibold text-gray-900 mb-2 animate-pulse">Loading Analysis Report</h2>
+          <p className="text-gray-600">Fetching your resume data...</p>
         </div>
       </div>
     );
@@ -167,6 +221,26 @@ export default function ResumeAnalysisReport() {
               </div>
             </div>
             <div className="flex items-center space-x-2">
+              {/* Reanalysis Button in Header */}
+              {analysis && (
+                <button 
+                  onClick={handleRunAnalysis}
+                  disabled={analyzing}
+                  className="flex items-center space-x-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {analyzing ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      <span className="text-sm">Analyzing...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Play className="w-4 h-4" />
+                      <span className="text-sm">Reanalyze</span>
+                    </>
+                  )}
+                </button>
+              )}
               <button className="p-2 text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition-colors">
                 <Share2 className="w-5 h-5" />
               </button>
@@ -239,14 +313,65 @@ export default function ResumeAnalysisReport() {
                 </div>
               </div>
               
+              {/* Fallback Analysis Notice */}
+              {analysis.metadata?.isFallback && (
+                <div className="mb-6 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center space-x-3">
+                      <AlertCircle className="w-5 h-5 text-yellow-600" />
+                      <div>
+                        <h3 className="text-sm font-medium text-yellow-800">
+                          Analysis using {analysis.aiProvider || analysis.metadata?.aiProvider || 'Fallback Method'}
+                        </h3>
+                        <p className="text-sm text-yellow-700">
+                          {analysis.metadata.message || "Analysis completed using fallback method due to API quota limits. For full AI analysis, please try again later."}
+                        </p>
+                      </div>
+                    </div>
+                    <button 
+                      onClick={handleRunAnalysis}
+                      disabled={analyzing}
+                      className="flex items-center space-x-2 px-4 py-2 bg-yellow-600 text-white rounded-lg hover:bg-yellow-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-sm"
+                    >
+                      {analyzing ? (
+                        <>
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                          <span>Retrying...</span>
+                        </>
+                      ) : (
+                        <>
+                          <Play className="w-4 h-4" />
+                          <span>Retry AI Analysis</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </div>
+              )}
+              
+              {/* AI Provider Info */}
+              {analysis.aiProvider && !analysis.metadata?.isFallback && (
+                <div className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                  <div className="flex items-center space-x-3">
+                    <Star className="w-5 h-5 text-blue-600" />
+                    <div>
+                      <h3 className="text-sm font-medium text-blue-800">AI Analysis Provider</h3>
+                      <p className="text-sm text-blue-700">
+                        Analysis completed using {analysis.aiProvider}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+              
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
                 <div className={`p-6 rounded-lg border-2 ${getScoreBgColor(analysis.resumeScore)}`}>
                   <div className="flex items-center justify-between mb-2">
                     <TrendingUp className="w-6 h-6 text-slate-600" />
                     <span className="text-sm font-medium text-slate-600">Resume Score</span>
                   </div>
-                  <p className={`text-3xl font-bold ${getScoreColor(analysis.resumeScore)}`}>
-                    {analysis.resumeScore}/100
+                  <p className={`text-3xl font-bold ${getScoreColor(analysis.resumeScore || 0)}`}>
+                    {(analysis.resumeScore || 0)}/100
                   </p>
                 </div>
                 
@@ -266,7 +391,7 @@ export default function ResumeAnalysisReport() {
                     <span className="text-sm font-medium text-green-600">Keywords Matched</span>
                   </div>
                   <p className="text-3xl font-bold text-green-600">
-                    {analysis.keywordsMatched.length}
+                    {analysis.keywordsMatched?.length || 0}
                   </p>
                 </div>
                 
@@ -276,7 +401,7 @@ export default function ResumeAnalysisReport() {
                     <span className="text-sm font-medium text-orange-600">Issues Found</span>
                   </div>
                   <p className="text-3xl font-bold text-orange-600">
-                    {analysis.grammarIssues.length}
+                    {analysis.grammarIssues?.length || 0}
                   </p>
                 </div>
               </div>
@@ -302,13 +427,14 @@ export default function ResumeAnalysisReport() {
                   <div>
                     <h3 className="text-lg font-semibold text-green-700 mb-4 flex items-center">
                       <CheckCircle className="w-5 h-5 mr-2" />
-                      Keywords Found ({analysis.keywordsMatched.length})
+                      Keywords Found ({(analysis.keywordsMatched || []).length})
                     </h3>
                     <div className="flex flex-wrap gap-2">
-                      {analysis.keywordsMatched.map((keyword, index) => (
+                      {(analysis.keywordsMatched || []).map((keyword, index) => (
                         <span 
                           key={index}
-                          className="px-3 py-1 bg-green-100 text-green-800 rounded-full text-sm font-medium"
+                          className="px-3 py-1 bg-green-100 text-green-800 rounded-full text-sm font-medium animate-fade-in"
+                          style={{ animationDelay: `${index * 100}ms` }}
                         >
                           {keyword}
                         </span>
@@ -319,13 +445,14 @@ export default function ResumeAnalysisReport() {
                   <div>
                     <h3 className="text-lg font-semibold text-orange-700 mb-4 flex items-center">
                       <AlertCircle className="w-5 h-5 mr-2" />
-                      Missing Keywords ({analysis.keywordsMissing.length})
+                      Missing Keywords ({(analysis.keywordsMissing || []).length})
                     </h3>
                     <div className="flex flex-wrap gap-2">
-                      {analysis.keywordsMissing.map((keyword, index) => (
+                      {(analysis.keywordsMissing || []).map((keyword, index) => (
                         <span 
                           key={index}
-                          className="px-3 py-1 bg-orange-100 text-orange-800 rounded-full text-sm font-medium"
+                          className="px-3 py-1 bg-orange-100 text-orange-800 rounded-full text-sm font-medium animate-fade-in"
+                          style={{ animationDelay: `${index * 100}ms` }}
                         >
                           {keyword}
                         </span>
@@ -356,11 +483,15 @@ export default function ResumeAnalysisReport() {
                   <div>
                     <h3 className="text-lg font-semibold text-red-700 mb-4 flex items-center">
                       <AlertCircle className="w-5 h-5 mr-2" />
-                      Grammar Issues ({analysis.grammarIssues.length})
+                      Grammar Issues ({(analysis.grammarIssues || []).length})
                     </h3>
                     <div className="space-y-3">
-                      {analysis.grammarIssues.map((issue, index) => (
-                        <div key={index} className="p-3 bg-red-50 border border-red-200 rounded-lg">
+                      {(analysis.grammarIssues || []).map((issue, index) => (
+                        <div 
+                          key={index} 
+                          className="p-3 bg-red-50 border border-red-200 rounded-lg animate-slide-in-left"
+                          style={{ animationDelay: `${index * 150}ms` }}
+                        >
                           <p className="text-red-800 text-sm">{issue}</p>
                         </div>
                       ))}
@@ -370,11 +501,15 @@ export default function ResumeAnalysisReport() {
                   <div>
                     <h3 className="text-lg font-semibold text-blue-700 mb-4 flex items-center">
                       <MessageSquare className="w-5 h-5 mr-2" />
-                      Formatting Tips ({analysis.formattingTips.length})
+                      Formatting Tips ({(analysis.formattingTips || []).length})
                     </h3>
                     <div className="space-y-3">
-                      {analysis.formattingTips.map((tip, index) => (
-                        <div key={index} className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                      {(analysis.formattingTips || []).map((tip, index) => (
+                        <div 
+                          key={index} 
+                          className="p-3 bg-blue-50 border border-blue-200 rounded-lg animate-slide-in-right"
+                          style={{ animationDelay: `${index * 150}ms` }}
+                        >
                           <p className="text-blue-800 text-sm">{tip}</p>
                         </div>
                       ))}
@@ -387,12 +522,31 @@ export default function ResumeAnalysisReport() {
             {/* Action Buttons */}
             <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
               <h2 className="text-2xl font-bold text-slate-900 mb-6">Next Steps</h2>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <button className="flex items-center justify-center space-x-2 px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                {/* Reanalysis Button - Show for all completed analyses */}
+                <button 
+                  onClick={handleRunAnalysis}
+                  disabled={analyzing}
+                  className="flex items-center justify-center space-x-2 px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {analyzing ? (
+                    <>
+                      <Loader2 className="w-5 h-5 mr-2 animate-spin" />
+                      Analyzing...
+                    </>
+                  ) : (
+                    <>
+                      <Play className="w-5 h-5 mr-2" />
+                      Reanalyze
+                    </>
+                  )}
+                </button>
+                
+                <button className="flex items-center justify-center space-x-2 px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors">
                   <Download className="w-5 h-5" />
                   <span>Download Report</span>
                 </button>
-                <button className="flex items-center justify-center space-x-2 px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors">
+                <button className="flex items-center justify-center space-x-2 px-6 py-3 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors">
                   <Share2 className="w-5 h-5" />
                   <span>Share Analysis</span>
                 </button>
@@ -411,14 +565,85 @@ export default function ResumeAnalysisReport() {
             <FileText className="w-16 h-16 text-slate-400 mx-auto mb-4" />
             <h2 className="text-2xl font-bold text-slate-900 mb-2">No Analysis Available</h2>
             <p className="text-slate-600 mb-6">
-             {`This resume hasn't been analyzed yet. Please run an analysis to see detailed insights.`}
+              {`This resume hasn't been analyzed yet. Please run an analysis to see detailed insights.`}
             </p>
-            <button className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors">
-              Run Analysis
+            <button 
+              onClick={handleRunAnalysis}
+              disabled={analyzing}
+              className="inline-flex items-center px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {analyzing ? (
+                <>
+                  <Loader2 className="w-5 h-5 mr-2 animate-spin" />
+                  Analyzing...
+                </>
+              ) : (
+                <>
+                  <Play className="w-5 h-5 mr-2" />
+                  Run Analysis
+                </>
+              )}
             </button>
           </div>
         )}
+
+        {/* Analysis Progress Overlay */}
+        {analyzing && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <div className="bg-white rounded-xl p-8 max-w-md mx-4 text-center">
+              <div className="relative mb-6">
+                <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-blue-600 mx-auto"></div>
+                <div className="absolute inset-0 rounded-full border-2 border-blue-200 animate-pulse"></div>
+              </div>
+              <h3 className="text-xl font-semibold text-gray-900 mb-2">Analyzing Resume</h3>
+              <p className="text-gray-600 mb-4">Our AI is processing your resume...</p>
+              <div className="space-y-2">
+                <div className="flex items-center justify-between text-sm">
+                  <span>Extracting text...</span>
+                  <div className="w-4 h-4 bg-green-500 rounded-full animate-pulse"></div>
+                </div>
+                <div className="flex items-center justify-between text-sm">
+                  <span>Analyzing content...</span>
+                  <div className="w-4 h-4 bg-blue-500 rounded-full animate-pulse"></div>
+                </div>
+                <div className="flex items-center justify-between text-sm">
+                  <span>Generating insights...</span>
+                  <div className="w-4 h-4 bg-purple-500 rounded-full animate-pulse"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
+
+      <style jsx>{`
+        @keyframes fade-in {
+          from { opacity: 0; transform: translateY(10px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
+        
+        @keyframes slide-in-left {
+          from { opacity: 0; transform: translateX(-20px); }
+          to { opacity: 1; transform: translateX(0); }
+        }
+        
+        @keyframes slide-in-right {
+          from { opacity: 0; transform: translateX(20px); }
+          to { opacity: 1; transform: translateX(0); }
+        }
+        
+        .animate-fade-in {
+          animation: fade-in 0.5s ease-out forwards;
+        }
+        
+        .animate-slide-in-left {
+          animation: slide-in-left 0.5s ease-out forwards;
+        }
+        
+        .animate-slide-in-right {
+          animation: slide-in-right 0.5s ease-out forwards;
+        }
+      `}</style>
     </div>
   );
 }

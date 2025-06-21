@@ -1,15 +1,19 @@
 import { extractTextFromS3 } from "@/lib/extractText";
 import { analyzeResume } from "@/lib/gemini";
+import { analyzeResumeWithOpenAI } from "@/lib/openai";
 import { getCurrentUserOrThrow } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { NextRequest, NextResponse } from "next/server";
 
 export async function POST(req: NextRequest) {
+    let resumeId: string | null = null;
+    
     try {
         // Get the current user from database
         const user = await getCurrentUserOrThrow();
 
-        const { fileKey, fileType, resumeId } = await req.json();
+        const { fileKey, fileType, resumeId: reqResumeId } = await req.json();
+        resumeId = reqResumeId;
 
         if (!fileKey || !fileType || !resumeId) {
             return NextResponse.json({
@@ -38,10 +42,54 @@ export async function POST(req: NextRequest) {
         });
 
         // Extract text from the uploaded file
+        console.log("Extracting text from S3...");
         const text = await extractTextFromS3(fileKey, fileType);
+        console.log("Text extracted successfully, length:", text.length);
 
-        // Analyze the resume using Gemini
-        const analysis = await analyzeResume(text);
+        // Try Gemini first, then OpenAI as fallback
+        let analysis;
+        let aiProvider = "Unknown";
+        let isFallback = false;
+
+        try {
+            console.log("Starting Gemini analysis...");
+            analysis = await analyzeResume(text);
+            aiProvider = analysis.aiProvider || "Gemini";
+            console.log("Gemini analysis completed:", analysis);
+        } catch (geminiError) {
+            console.log("Gemini analysis failed, trying OpenAI...", geminiError);
+            
+            try {
+                console.log("Starting OpenAI analysis...");
+                analysis = await analyzeResumeWithOpenAI(text);
+                aiProvider = analysis.aiProvider || "OpenAI";
+                isFallback = true;
+                console.log("OpenAI analysis completed:", analysis);
+            } catch (openaiError) {
+                console.log("Both AI providers failed, using Gemini fallback...", openaiError);
+                analysis = await analyzeResume(text); // This will use Gemini fallback
+                aiProvider = analysis.aiProvider || "Gemini (Fallback)";
+                isFallback = true;
+                console.log("Fallback analysis completed:", analysis);
+            }
+        }
+
+        // Check if this was a fallback analysis
+        const isFallbackAnalysis = isFallback || 
+            (analysis.grammarIssues && 
+             analysis.grammarIssues.some((issue: string) => 
+                issue.includes("Analysis limited due to API quota") ||
+                issue.includes("API unavailability")
+             ));
+
+        // Add metadata to the analysis result
+        analysis.metadata = {
+            isFallback: isFallbackAnalysis,
+            aiProvider: aiProvider,
+            message: isFallbackAnalysis 
+                ? `Analysis completed using ${aiProvider} due to API limitations`
+                : `Analysis completed using ${aiProvider}`
+        };
 
         // Save the analysis to database
         const savedAnalysis = await prisma.analysis.create({
@@ -65,28 +113,45 @@ export async function POST(req: NextRequest) {
             success: true,
             analysis: {
                 id: savedAnalysis.id,
-                ...analysis
+                ...analysis,
+                isFallback: isFallbackAnalysis,
+                aiProvider: aiProvider
             }
         }, { status: 200 });
 
     } catch (error) {
         console.error("Error while analyzing the resume:", error);
 
-        // If we have resumeId, update status to failed
-        try {
-            const { resumeId } = await req.json();
-            if (resumeId) {
+        // Update resume status to failed if we have the resumeId
+        if (resumeId) {
+            try {
                 await prisma.resume.update({
                     where: { id: resumeId },
                     data: { status: 'FAILED' }
                 });
+                console.log("Updated resume status to FAILED for resumeId:", resumeId);
+            } catch (updateError) {
+                console.error("Error updating resume status:", updateError);
             }
-        } catch (updateError) {
-            console.error("Error updating resume status:", updateError);
+        }
+
+        // Return a more specific error message
+        let errorMessage = "Error while analyzing the resume";
+        
+        if (error instanceof Error) {
+            if (error.message.includes("GEMINI_API_KEY") || error.message.includes("AIMLAPI_KEY")) {
+                errorMessage = "AI analysis service is not configured";
+            } else if (error.message.includes("AWS")) {
+                errorMessage = "File storage service error";
+            } else if (error.message.includes("Failed to parse")) {
+                errorMessage = "AI analysis failed to generate proper response";
+            } else {
+                errorMessage = error.message;
+            }
         }
 
         return NextResponse.json({
-            error: "Error while analyzing the resume"
+            error: errorMessage
         }, { status: 500 });
     }
 }

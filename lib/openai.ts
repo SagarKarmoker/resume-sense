@@ -1,15 +1,18 @@
-import { GoogleGenerativeAI } from "@google/generative-ai";
+import OpenAI from "openai";
 
 // Check for required environment variables
-if (!process.env.GEMINI_API_KEY) {
-    throw new Error("GEMINI_API_KEY environment variable is required");
+if (!process.env.AIMLAPI_KEY) {
+    console.warn("AIMLAPI_KEY environment variable is not set. OpenAI analysis will not be available.");
 }
 
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+const openaiClient = process.env.AIMLAPI_KEY ? new OpenAI({
+    baseURL: "https://api.aimlapi.com/v1",
+    apiKey: process.env.AIMLAPI_KEY,
+}) : null;
 
-// Fallback analysis when API quota is exceeded
-function generateFallbackAnalysis(text: string) {
-    console.log("Using fallback analysis due to API quota limits");
+// Fallback analysis when OpenAI API is not available
+function generateOpenAIFallbackAnalysis(text: string) {
+    console.log("Using OpenAI fallback analysis due to API unavailability");
     
     // Basic text analysis
     const wordCount = text.split(/\s+/).length;
@@ -88,38 +91,20 @@ function generateFallbackAnalysis(text: string) {
     
     return {
         resumeScore: Math.min(score, 100),
-        grammarIssues: ["Analysis limited due to API quota. Please try again later for detailed grammar review."],
+        grammarIssues: ["Analysis limited due to OpenAI API unavailability. Please try again later for detailed grammar review."],
         formattingTips: formattingTips,
         keywordsMatched: foundSkills.slice(0, 10), // Limit to top 10
         keywordsMissing: allSkills.filter(skill => !foundSkills.includes(skill)).slice(0, 8),
         atsCompatibility: atsCompatibility,
-        aiProvider: "Gemini (Fallback)"
+        aiProvider: "OpenAI (Fallback)"
     };
 }
 
-export async function analyzeResume(text: string) {
+export async function analyzeResumeWithOpenAI(text: string) {
     try {
-        // Try different model names in case the API has changed
-        let model;
-        const modelNames = ["gemini-2.0-flash"];
-        
-        for (const modelName of modelNames) {
-            try {
-                console.log(`Trying model: ${modelName}`);
-                model = genAI.getGenerativeModel({ model: modelName });
-                // Test if the model works by making a simple call
-                await model.generateContent("Hello");
-                console.log(`Model ${modelName} is working`);
-                break;
-            } catch (error) {
-                console.log(`Model ${modelName} failed:`, error instanceof Error ? error.message : String(error));
-                continue;
-            }
-        }
-        
-        if (!model) {
-            console.log("All models failed, using fallback analysis");
-            return generateFallbackAnalysis(text);
+        if (!openaiClient) {
+            console.log("OpenAI client not available, using fallback analysis");
+            return generateOpenAIFallbackAnalysis(text);
         }
 
         const prompt = `
@@ -141,9 +126,23 @@ Resume Text:
 """${text}"""
 `;
 
-        const result = await model.generateContent(prompt);
-        const response = result.response;
-        const textOutput = response.text();
+        const response = await openaiClient.chat.completions.create({
+            model: "gpt-4o",
+            messages: [
+                {
+                    role: "user",
+                    content: prompt
+                }
+            ],
+            temperature: 0.3,
+            max_tokens: 2000
+        });
+
+        const textOutput = response.choices[0]?.message?.content;
+
+        if (!textOutput) {
+            throw new Error("No response content received from OpenAI");
+        }
 
         try {
             // Clean the response to remove markdown code blocks
@@ -160,42 +159,44 @@ Resume Text:
                 cleanedOutput = cleanedOutput.replace(/\s*```$/, '');
             }
             
-            console.log('Cleaned response:', cleanedOutput);
+            console.log('OpenAI cleaned response:', cleanedOutput);
             const json = JSON.parse(cleanedOutput);
+            
+            // Add AI provider information
             return {
                 ...json,
-                aiProvider: "Gemini"
+                aiProvider: "OpenAI GPT-4o"
             };
         } catch (error) {
-            console.log("Error parsing Gemini response: ", error);
+            console.log("Error parsing OpenAI response: ", error);
             console.log("Raw response: ", textOutput);
-            throw new Error("Failed to parse Gemini response: " + textOutput);
+            throw new Error("Failed to parse OpenAI response: " + textOutput);
         }
     } catch (error) {
-        console.error("Error in Gemini analysis:", error);
+        console.error("Error in OpenAI analysis:", error);
         
         if (error instanceof Error) {
-            if (error.message.includes("API_KEY")) {
-                throw new Error("Gemini API key is not configured properly");
+            if (error.message.includes("API_KEY") || error.message.includes("api_key")) {
+                throw new Error("OpenAI API key is not configured properly");
             } else if (error.message.includes("quota") || error.message.includes("429")) {
-                console.log("API quota exceeded, using fallback analysis");
-                return generateFallbackAnalysis(text);
+                console.log("OpenAI API quota exceeded, using fallback analysis");
+                return generateOpenAIFallbackAnalysis(text);
             } else if (error.message.includes("rate")) {
-                console.log("Rate limit exceeded, using fallback analysis");
-                return generateFallbackAnalysis(text);
+                console.log("OpenAI rate limit exceeded, using fallback analysis");
+                return generateOpenAIFallbackAnalysis(text);
             } else if (error.message.includes("404") || error.message.includes("Not Found")) {
-                console.log("Model not found, using fallback analysis");
-                return generateFallbackAnalysis(text);
+                console.log("OpenAI model not found, using fallback analysis");
+                return generateOpenAIFallbackAnalysis(text);
             } else if (error.message.includes("403") || error.message.includes("Forbidden")) {
-                console.log("API access forbidden, using fallback analysis");
-                return generateFallbackAnalysis(text);
+                console.log("OpenAI API access forbidden, using fallback analysis");
+                return generateOpenAIFallbackAnalysis(text);
             } else {
-                console.log("Unknown error, using fallback analysis");
-                return generateFallbackAnalysis(text);
+                console.log("Unknown OpenAI error, using fallback analysis");
+                return generateOpenAIFallbackAnalysis(text);
             }
         }
         
         console.log("Unknown error type, using fallback analysis");
-        return generateFallbackAnalysis(text);
+        return generateOpenAIFallbackAnalysis(text);
     }
-}
+} 
