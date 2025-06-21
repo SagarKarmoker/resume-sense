@@ -1,0 +1,11 @@
+export { default as Header } from './Header';
+export { default as ResumeUpload } from './ResumeUpload';
+export { default as TabNavigation } from './TabNavigation';
+export { default as StatsCard } from './StatsCard';
+export { default as OverviewTab } from './OverviewTab';
+export { default as AnalysesTab } from './AnalysesTab';
+export { default as SuggestionsTab } from './SuggestionsTab';
+export { default as JobMatchesTab } from './JobMatchesTab';
+export { mockAnalyses } from './mockData';
+export * from './types';
+export * from './utils'; 
