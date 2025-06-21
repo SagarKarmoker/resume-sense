@@ -1,6 +1,7 @@
 import { FileText, Eye, Download, Trash2, Search, Filter } from "lucide-react";
 import { ResumeAnalysis } from "./types";
 import { getScoreColor } from "./utils";
+import Link from "next/link";
 
 interface AnalysesTabProps {
   analyses: ResumeAnalysis[];
@@ -62,9 +63,12 @@ export default function AnalysesTab({ analyses }: AnalysesTabProps) {
                 }`}>
                   {analysis.status}
                 </span>
-                <button className="p-2 text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer">
+                <Link 
+                  href={`/resume?id=${analysis.id}`}
+                  className="p-2 text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer"
+                >
                   <Eye className="w-4 h-4" />
-                </button>
+                </Link>
                 <button className="p-2 text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer">
                   <Download className="w-4 h-4" />
                 </button>
@@ -107,9 +111,12 @@ export default function AnalysesTab({ analyses }: AnalysesTabProps) {
                 <span>{analysis.suggestions.length} suggestions</span>
                 <span>{analysis.jobMatches.length} job matches</span>
               </div>
-              <button className="text-blue-600 hover:text-blue-700 font-medium cursor-pointer">
+              <Link 
+                href={`/resume?id=${analysis.id}`}
+                className="text-blue-600 hover:text-blue-700 font-medium cursor-pointer"
+              >
                 View Full Analysis →
-              </button>
+              </Link>
             </div>
           </div>
         ))}

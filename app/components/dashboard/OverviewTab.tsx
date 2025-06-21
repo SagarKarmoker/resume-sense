@@ -2,6 +2,7 @@ import { FileText, TrendingUp, Target, MessageSquare, Eye, Download } from "luci
 import { ResumeAnalysis } from "./types";
 import { getScoreColor, getScoreBgColor } from "./utils";
 import StatsCard from "./StatsCard";
+import Link from "next/link";
 
 interface OverviewTabProps {
   analyses: ResumeAnalysis[];
@@ -102,9 +103,12 @@ export default function OverviewTab({ analyses }: OverviewTabProps) {
                   </div>
                 </div>
                 <div className="flex items-center space-x-2">
-                  <button className="p-2 text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer">
+                  <Link 
+                    href={`/resume?id=${analyses[0].id}`}
+                    className="p-2 text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer"
+                  >
                     <Eye className="w-4 h-4" />
-                  </button>
+                  </Link>
                   <button className="p-2 text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer">
                     <Download className="w-4 h-4" />
                   </button>
