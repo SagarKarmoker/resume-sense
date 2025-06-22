@@ -1,8 +1,8 @@
-import mammoth from "mammoth";
 import { S3Client, GetObjectCommand } from "@aws-sdk/client-s3";
-import { Readable } from "stream";
+import pdfParse from "pdf-parse";
+import mammoth from "mammoth";
 
-// Check for required environment variables
+// Validate required environment variables
 if (!process.env.AWS_REGION) {
     throw new Error("AWS_REGION environment variable is required");
 }
@@ -10,110 +10,114 @@ if (!process.env.AWS_S3_BUCKET_NAME) {
     throw new Error("AWS_S3_BUCKET_NAME environment variable is required");
 }
 
-const s3Client = new S3Client({
-    region: process.env.AWS_REGION
-})
+const s3Client = new S3Client({ region: process.env.AWS_REGION });
 
-function streamToBuffer(stream: Readable): Promise<Buffer> {
-    return new Promise((resolve, reject) => {
-        const chunks: Buffer[] = [];
-        stream.on("data", chunk => chunks.push(chunk))
-        stream.on("error", reject)
-        stream.on("end", () => resolve(Buffer.concat(chunks)))
-    })
-}
-
-// PDF text extraction with fallback
-async function parsePDF(buffer: Buffer): Promise<string> {
+// Alternative: Using AWS SDK's built-in method
+async function getS3ObjectAsBuffer(bucket: string, key: string): Promise<Buffer> {
     try {
-        console.log("PDF file received, attempting text extraction");
-        console.log(`PDF buffer size: ${buffer.length} bytes`);
-        
-        // Try to use pdf-parse dynamically
-        try {
-            const pdfParse = await import("pdf-parse");
-            const data = await pdfParse.default(buffer);
-            const text = data.text.trim();
-            
-            console.log(`PDF text extracted successfully, length: ${text.length}`);
-            
-            if (!text || text.length < 10) {
-                console.warn("Extracted PDF text is very short, may be an image-based PDF");
-                return "PDF appears to be image-based or contains minimal text. For best results, please upload a text-based PDF or DOCX file.";
-            }
-            
-            return text;
-        } catch (importError) {
-            console.warn("pdf-parse library not available, using fallback PDF parsing:", importError);
-            return "PDF document detected. Text extraction is being processed. For optimal results, please upload a DOCX file for full text analysis.";
-        }
-        
-    } catch (error) {
-        console.error("PDF parsing error:", error);
-        
-        // Fallback for common PDF parsing issues
-        if (error instanceof Error) {
-            if (error.message.includes("Invalid PDF")) {
-                return "Unable to parse PDF - file may be corrupted or password-protected. Please upload a valid PDF or DOCX file.";
-            } else if (error.message.includes("password")) {
-                return "PDF appears to be password-protected. Please upload an unprotected PDF or DOCX file.";
-            } else if (error.message.includes("ENOENT")) {
-                return "PDF processing temporarily unavailable. Please upload a DOCX file for immediate analysis.";
-            }
-        }
-        
-        return "PDF processing encountered an error. Please upload a DOCX file for reliable text analysis.";
-    }
-}
-
-export async function extractTextFromS3(fileKey: string, fileType: string) {
-    try {
-        console.log(`Extracting text from S3: ${fileKey}, type: ${fileType}`);
-        
         const command = new GetObjectCommand({
-            Bucket: process.env.AWS_S3_BUCKET_NAME,
-            Key: fileKey
-        })
+            Bucket: bucket,
+            Key: key,
+        });
 
         const response = await s3Client.send(command);
-        const stream = response.Body as Readable;
-        const buffer = await streamToBuffer(stream);
-
-        console.log(`File downloaded, size: ${buffer.length} bytes`);
-
-        if (fileType === "application/pdf") {
-            const text = await parsePDF(buffer);
-            console.log(`PDF processed successfully`);
-            return text;
-        } else if (fileType === "application/vnd.openxmlformats-officedocument.wordprocessingml.document") {
-            try {
-                const result = await mammoth.extractRawText({ buffer });
-                console.log(`DOCX parsed successfully, text length: ${result.value.length}`);
-                return result.value;
-            } catch (docxError) {
-                console.error("DOCX parsing error:", docxError);
-                throw new Error(`Failed to parse DOCX: ${docxError instanceof Error ? docxError.message : 'Unknown error'}`);
-            }
-        } else {
-            throw new Error(`Unsupported file type: ${fileType}`);
+        
+        if (!response.Body) {
+            throw new Error("Empty response body from S3");
         }
+
+        // Convert the response body to buffer
+        const chunks: Buffer[] = [];
+        const reader = response.Body as NodeJS.ReadableStream;
+        
+        for await (const chunk of reader) {
+            chunks.push(Buffer.from(chunk));
+        }
+        
+        return Buffer.concat(chunks);
     } catch (error) {
-        console.error("Error extracting text from S3:", error);
-        
-        if (error instanceof Error) {
-            if (error.message.includes("NoSuchKey")) {
-                throw new Error("File not found in storage");
-            } else if (error.message.includes("AccessDenied")) {
-                throw new Error("Access denied to file storage");
-            } else if (error.message.includes("InvalidAccessKeyId")) {
-                throw new Error("AWS credentials are not configured properly");
-            } else if (error.message.includes("ENOENT")) {
-                throw new Error("File system error - please check configuration");
-            } else {
-                throw new Error(`File processing error: ${error.message}`);
-            }
-        }
-        
         throw error;
     }
-} 
+}
+
+async function parsePDF(buffer: Buffer): Promise<string> {
+    try {
+        // Direct import instead of dynamic import
+        const data = await pdfParse(buffer);
+        const text = data.text.trim();
+
+        if (!text || text.length < 10) {
+            return "PDF appears to be image-based or contains minimal text. Please upload a text-based PDF or DOCX file.";
+        }
+
+        return text;
+    } catch (error) {
+        if (error instanceof Error) {
+            if (error.message.includes("Invalid PDF")) {
+                return "Unable to parse PDF. The file may be corrupted or not a real PDF.";
+            } else if (error.message.includes("password")) {
+                return "The PDF appears to be password-protected.";
+            }
+        }
+        return "An error occurred while processing the PDF file.";
+    }
+}
+
+export async function extractTextFromS3(fileKey: string, fileType: string): Promise<string> {
+    try {
+        // Use the simplified buffer method
+        const buffer = await getS3ObjectAsBuffer(process.env.AWS_S3_BUCKET_NAME!, fileKey);
+
+        // File size limit (10MB)
+        const MAX_SIZE_MB = 10;
+        if (buffer.length > MAX_SIZE_MB * 1024 * 1024) {
+            throw new Error("File is too large. Please upload a file under 10MB.");
+        }
+
+        let text = "";
+        
+        if (fileType === "application/pdf" || fileKey.toLowerCase().endsWith('.pdf')) {
+            text = await parsePDF(buffer);
+        } else if (fileType === "application/vnd.openxmlformats-officedocument.wordprocessingml.document" || 
+                   fileKey.toLowerCase().endsWith('.docx')) {
+            try {
+                const result = await mammoth.extractRawText({ buffer });
+
+                if (!result.value || result.value.trim().length < 10) {
+                    throw new Error("DOCX appears to be empty or contains minimal text.");
+                }
+
+                text = result.value.trim();
+            } catch (docxError) {
+                throw new Error(`Failed to process DOCX: ${docxError instanceof Error ? docxError.message : 'Unknown error'}`);
+            }
+        } else {
+            throw new Error(`Unsupported file type: ${fileType}. Supported types: PDF, DOCX`);
+        }
+
+        return text;
+
+    } catch (error) {
+        if (error instanceof Error) {
+            const msg = error.message;
+            
+            // S3 specific errors
+            if (msg.includes("NoSuchKey") || msg.includes("NotFound")) {
+                throw new Error("File not found in S3.");
+            } else if (msg.includes("AccessDenied")) {
+                throw new Error("Access denied to the S3 file.");
+            } else if (msg.includes("InvalidAccessKeyId")) {
+                throw new Error("Invalid AWS credentials.");
+            } else if (msg.includes("SignatureDoesNotMatch")) {
+                throw new Error("AWS signature mismatch.");
+            } else if (msg.includes("TimeoutError") || msg.includes("timeout")) {
+                throw new Error("Network timeout. Please try again.");
+            }
+
+            // Re-throw the original error if it's already a user-friendly message
+            throw error;
+        }
+
+        throw new Error("An unknown error occurred during text extraction.");
+    }
+}

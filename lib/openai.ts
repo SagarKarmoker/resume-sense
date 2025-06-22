@@ -12,8 +12,6 @@ const openaiClient = process.env.AIMLAPI_KEY ? new OpenAI({
 
 // Fallback analysis when OpenAI API is not available
 function generateOpenAIFallbackAnalysis(text: string) {
-    console.log("Using OpenAI fallback analysis due to API unavailability");
-    
     // Basic text analysis
     const wordCount = text.split(/\s+/).length;
     const hasEmail = /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b/.test(text);
@@ -103,7 +101,6 @@ function generateOpenAIFallbackAnalysis(text: string) {
 export async function analyzeResumeWithOpenAI(text: string) {
     try {
         if (!openaiClient) {
-            console.log("OpenAI client not available, using fallback analysis");
             return generateOpenAIFallbackAnalysis(text);
         }
 
@@ -159,7 +156,6 @@ Resume Text:
                 cleanedOutput = cleanedOutput.replace(/\s*```$/, '');
             }
             
-            console.log('OpenAI cleaned response:', cleanedOutput);
             const json = JSON.parse(cleanedOutput);
             
             // Add AI provider information
@@ -168,35 +164,25 @@ Resume Text:
                 aiProvider: "OpenAI GPT-4o"
             };
         } catch (error) {
-            console.log("Error parsing OpenAI response: ", error);
-            console.log("Raw response: ", textOutput);
             throw new Error("Failed to parse OpenAI response: " + textOutput);
         }
     } catch (error) {
-        console.error("Error in OpenAI analysis:", error);
-        
         if (error instanceof Error) {
             if (error.message.includes("API_KEY") || error.message.includes("api_key")) {
                 throw new Error("OpenAI API key is not configured properly");
             } else if (error.message.includes("quota") || error.message.includes("429")) {
-                console.log("OpenAI API quota exceeded, using fallback analysis");
                 return generateOpenAIFallbackAnalysis(text);
             } else if (error.message.includes("rate")) {
-                console.log("OpenAI rate limit exceeded, using fallback analysis");
                 return generateOpenAIFallbackAnalysis(text);
             } else if (error.message.includes("404") || error.message.includes("Not Found")) {
-                console.log("OpenAI model not found, using fallback analysis");
                 return generateOpenAIFallbackAnalysis(text);
             } else if (error.message.includes("403") || error.message.includes("Forbidden")) {
-                console.log("OpenAI API access forbidden, using fallback analysis");
                 return generateOpenAIFallbackAnalysis(text);
             } else {
-                console.log("Unknown OpenAI error, using fallback analysis");
                 return generateOpenAIFallbackAnalysis(text);
             }
         }
         
-        console.log("Unknown error type, using fallback analysis");
         return generateOpenAIFallbackAnalysis(text);
     }
 } 

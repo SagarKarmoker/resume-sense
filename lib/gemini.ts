@@ -9,8 +9,6 @@ const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
 // Fallback analysis when API quota is exceeded
 function generateFallbackAnalysis(text: string) {
-    console.log("Using fallback analysis due to API quota limits");
-    
     // Basic text analysis
     const wordCount = text.split(/\s+/).length;
     const hasEmail = /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b/.test(text);
@@ -105,20 +103,16 @@ export async function analyzeResume(text: string) {
         
         for (const modelName of modelNames) {
             try {
-                console.log(`Trying model: ${modelName}`);
                 model = genAI.getGenerativeModel({ model: modelName });
                 // Test if the model works by making a simple call
                 await model.generateContent("Hello");
-                console.log(`Model ${modelName} is working`);
                 break;
             } catch (error) {
-                console.log(`Model ${modelName} failed:`, error instanceof Error ? error.message : String(error));
                 continue;
             }
         }
         
         if (!model) {
-            console.log("All models failed, using fallback analysis");
             return generateFallbackAnalysis(text);
         }
 
@@ -160,42 +154,31 @@ Resume Text:
                 cleanedOutput = cleanedOutput.replace(/\s*```$/, '');
             }
             
-            console.log('Cleaned response:', cleanedOutput);
             const json = JSON.parse(cleanedOutput);
             return {
                 ...json,
                 aiProvider: "Gemini"
             };
         } catch (error) {
-            console.log("Error parsing Gemini response: ", error);
-            console.log("Raw response: ", textOutput);
             throw new Error("Failed to parse Gemini response: " + textOutput);
         }
     } catch (error) {
-        console.error("Error in Gemini analysis:", error);
-        
         if (error instanceof Error) {
             if (error.message.includes("API_KEY")) {
                 throw new Error("Gemini API key is not configured properly");
             } else if (error.message.includes("quota") || error.message.includes("429")) {
-                console.log("API quota exceeded, using fallback analysis");
                 return generateFallbackAnalysis(text);
             } else if (error.message.includes("rate")) {
-                console.log("Rate limit exceeded, using fallback analysis");
                 return generateFallbackAnalysis(text);
             } else if (error.message.includes("404") || error.message.includes("Not Found")) {
-                console.log("Model not found, using fallback analysis");
                 return generateFallbackAnalysis(text);
             } else if (error.message.includes("403") || error.message.includes("Forbidden")) {
-                console.log("API access forbidden, using fallback analysis");
                 return generateFallbackAnalysis(text);
             } else {
-                console.log("Unknown error, using fallback analysis");
                 return generateFallbackAnalysis(text);
             }
         }
         
-        console.log("Unknown error type, using fallback analysis");
         return generateFallbackAnalysis(text);
     }
 }

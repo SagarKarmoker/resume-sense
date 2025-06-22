@@ -42,9 +42,7 @@ export async function POST(req: NextRequest) {
         });
 
         // Extract text from the uploaded file
-        console.log("Extracting text from S3...");
         const text = await extractTextFromS3(fileKey, fileType);
-        console.log("Text extracted successfully, length:", text.length);
 
         // Try Gemini first, then OpenAI as fallback
         let analysis;
@@ -52,25 +50,17 @@ export async function POST(req: NextRequest) {
         let isFallback = false;
 
         try {
-            console.log("Starting Gemini analysis...");
             analysis = await analyzeResume(text);
             aiProvider = analysis.aiProvider || "Gemini";
-            console.log("Gemini analysis completed:", analysis);
-        } catch (geminiError) {
-            console.log("Gemini analysis failed, trying OpenAI...", geminiError);
-            
+        } catch {
             try {
-                console.log("Starting OpenAI analysis...");
                 analysis = await analyzeResumeWithOpenAI(text);
                 aiProvider = analysis.aiProvider || "OpenAI";
                 isFallback = true;
-                console.log("OpenAI analysis completed:", analysis);
-            } catch (openaiError) {
-                console.log("Both AI providers failed, using Gemini fallback...", openaiError);
+            } catch {
                 analysis = await analyzeResume(text); // This will use Gemini fallback
                 aiProvider = analysis.aiProvider || "Gemini (Fallback)";
                 isFallback = true;
-                console.log("Fallback analysis completed:", analysis);
             }
         }
 
